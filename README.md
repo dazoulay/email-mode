@@ -3,7 +3,7 @@
 <p align="center">
   <strong>Talk to Claude Code by email.</strong><br>
   Start a session, walk away, and keep it going from your phone.<br>
-  <sub>by <a href="https://github.com/dazoulay">David Azoulay</a></sub>
+  <sub>by <a href="https://www.linkedin.com/in/dazoulay/">David Azoulay</a></sub>
 </p>
 
 <p align="center">
@@ -259,6 +259,6 @@ tests/            unit tests driven by fake hook payloads
 
 ## License
 
-[MIT](LICENSE) © 2026 David Azoulay
+[MIT](LICENSE) © 2026 [David Azoulay](https://www.linkedin.com/in/dazoulay/)
 
 <sub>Not affiliated with or endorsed by Anthropic. "Claude" and "Claude Code" are trademarks of Anthropic.</sub>
