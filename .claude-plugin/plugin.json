@@ -1,0 +1,19 @@
+{
+  "name": "email-mode",
+  "version": "0.1.0",
+  "description": "Drive Claude Code by email: a Gmail thread per session gets a summary whenever Claude finishes, and your replies (instructions, decisions) are passed back to Claude.",
+  "author": {
+    "name": "David Azoulay",
+    "url": "https://github.com/dazoulay"
+  },
+  "keywords": [
+    "email",
+    "gmail",
+    "remote",
+    "notifications",
+    "async"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/dazoulay/email-mode",
+  "repository": "https://github.com/dazoulay/email-mode"
+}

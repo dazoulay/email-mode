@@ -1,0 +1,35 @@
+{
+  "description": "email-mode: summary emails on stop, reply polling, decisions by email",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/cbe.py\" hook UserPromptSubmit", "timeout": 15 }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^(mcp__claude_ai_Gmail__(send_message|reply|search_threads|get_thread|get_message)|CronCreate)$",
+        "hooks": [
+          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/cbe.py\" hook PostToolUse", "timeout": 15 }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/cbe.py\" hook PreToolUse", "timeout": 15 }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/cbe.py\" hook Stop", "timeout": 15 }
+        ]
+      }
+    ]
+  }
+}

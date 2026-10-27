@@ -1,0 +1,16 @@
+{
+  "name": "email-mode",
+  "description": "Talk to Claude Code by email: summaries, decisions and replies over Gmail.",
+  "owner": {
+    "name": "David Azoulay",
+    "url": "https://github.com/dazoulay"
+  },
+  "plugins": [
+    {
+      "name": "email-mode",
+      "source": "./",
+      "description": "Drive Claude Code by email via the claude.ai Gmail connector.",
+      "version": "0.1.0"
+    }
+  ]
+}
