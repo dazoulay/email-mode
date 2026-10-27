@@ -1,4 +1,4 @@
-"""Unit tests for scripts/cbe.py. Run: python3 -m unittest discover -s tests"""
+"""Unit tests for scripts/email_mode.py. Run: python3 -m unittest discover -s tests"""
 import io
 import json
 import os
@@ -8,13 +8,13 @@ import tempfile
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CBE = os.path.join(ROOT, "scripts", "cbe.py")
+SCRIPT = os.path.join(ROOT, "scripts", "email_mode.py")
 SESSION = "sess-123"
 USER = "me@example.com"
 THREAD = "thread-1"
 
 
-class CbeTest(unittest.TestCase):
+class EmailModeTest(unittest.TestCase):
     def setUp(self):
         self.home = tempfile.mkdtemp()
         self.cwd = tempfile.mkdtemp(prefix="myproj-")
@@ -22,16 +22,16 @@ class CbeTest(unittest.TestCase):
 
     # -- helpers -----------------------------------------------------------
 
-    def run_cbe(self, *args, stdin=None, code=0):
-        env = dict(os.environ, CBE_HOME=self.home, CBE_NOW=str(self.t))
-        p = subprocess.run([sys.executable, CBE, *args], input=stdin, capture_output=True,
+    def run_script(self, *args, stdin=None, code=0):
+        env = dict(os.environ, EMAIL_MODE_HOME=self.home, EMAIL_MODE_NOW=str(self.t))
+        p = subprocess.run([sys.executable, SCRIPT, *args], input=stdin, capture_output=True,
                            text=True, env=env, cwd=self.cwd)
         self.assertEqual(p.returncode, code, p.stderr + p.stdout)
         return p.stdout
 
     def hook(self, event, **data):
         data.setdefault("session_id", SESSION)
-        out = self.run_cbe("hook", event, stdin=json.dumps(data))
+        out = self.run_script("hook", event, stdin=json.dumps(data))
         return json.loads(out) if out.strip() else None
 
     def context(self, out):
@@ -48,8 +48,8 @@ class CbeTest(unittest.TestCase):
         return [{"type": "text", "text": json.dumps(payload)}]
 
     def start_session(self, title="fix login"):
-        self.run_cbe("config", "to=" + USER)
-        out = self.run_cbe("start", "--title", title)
+        self.run_script("config", "to=" + USER)
+        out = self.run_script("start", "--title", title)
         subject = out.split("Subject: ")[1].splitlines()[0]
         res = self.hook("PostToolUse", tool_name="mcp__claude_ai_Gmail__send_message",
                         tool_input={"to": [USER], "subject": subject, "body": "hi"},
@@ -57,44 +57,44 @@ class CbeTest(unittest.TestCase):
         return subject, res
 
     def poll(self):
-        return self.hook("UserPromptSubmit", prompt="[cbe-poll %s] Check the thread." % self.state()["id"])
+        return self.hook("UserPromptSubmit", prompt="[em-poll %s] Check the thread." % self.state()["id"])
 
     # -- start / binding ---------------------------------------------------
 
     def test_start_requires_recipient(self):
-        out = self.run_cbe("start", code=1)
+        out = self.run_script("start", code=1)
         self.assertIn("ERROR: no recipient", out)
 
     def test_start_and_bind(self):
         subject, res = self.start_session()
         st = self.state()
-        self.assertRegex(subject, r"^\[CBE\] myproj-\w+ · cbe-[0-9a-f]{4} · fix login$")
+        self.assertRegex(subject, r"^\[email-mode\] myproj-\w+ · em-[0-9a-f]{4} · fix login$")
         self.assertEqual(st["status"], "active")
         self.assertEqual(st["session_id"], SESSION)
         self.assertEqual(st["thread_id"], THREAD)
         self.assertEqual(st["own_ids"], ["m1"])
         self.assertIn("CronCreate", self.context(res))
-        self.assertIn("[cbe-poll %s]" % st["id"], self.context(res))
+        self.assertIn("[em-poll %s]" % st["id"], self.context(res))
 
     def test_unrelated_email_does_not_bind(self):
-        self.run_cbe("config", "to=" + USER)
-        self.run_cbe("start")
+        self.run_script("config", "to=" + USER)
+        self.run_script("start")
         res = self.hook("PostToolUse", tool_name="mcp__claude_ai_Gmail__send_message",
                         tool_input={"subject": "Lunch?"}, tool_response=self.mcp({"id": "x", "threadId": "t"}))
         self.assertIsNone(res)
         self.assertEqual(self.state()["status"], "pending")
 
     def test_parallel_sessions_get_distinct_ids(self):
-        self.run_cbe("config", "to=" + USER)
-        a = self.run_cbe("start").split("Session id: ")[1].split()[0]
-        b = self.run_cbe("start").split("Session id: ")[1].split()[0]
+        self.run_script("config", "to=" + USER)
+        a = self.run_script("start").split("Session id: ")[1].split()[0]
+        b = self.run_script("start").split("Session id: ")[1].split()[0]
         self.assertNotEqual(a, b)
 
     def test_cron_id_recorded(self):
         self.start_session()
         sid = self.state()["id"]
         self.hook("PostToolUse", tool_name="CronCreate",
-                  tool_input={"cron": "* * * * *", "prompt": "[cbe-poll %s] Check the email-mode thread for a reply." % sid},
+                  tool_input={"cron": "* * * * *", "prompt": "[em-poll %s] Check the email-mode thread for a reply." % sid},
                   tool_response="Scheduled recurring job abc12345 (Every minute).")
         self.assertEqual(self.state()["cron_id"], "abc12345")
 
@@ -134,7 +134,7 @@ class CbeTest(unittest.TestCase):
 
     def test_terminal_summaries_can_be_turned_off(self):
         self.start_session()
-        self.run_cbe("config", "summarize_terminal_turns=false")
+        self.run_script("config", "summarize_terminal_turns=false")
         self.hook("UserPromptSubmit", prompt="do it")
         self.assertIsNone(self.hook("Stop"))
 
@@ -236,12 +236,12 @@ class CbeTest(unittest.TestCase):
 
     def test_backoff_config(self):
         sys.path.insert(0, os.path.join(ROOT, "scripts"))
-        import cbe
-        cfg = dict(cbe.DEFAULT_CONFIG, poll_min_minutes=2, poll_max_minutes=10)
-        self.assertEqual([cbe.poll_interval(cfg, n) for n in range(6)], [2, 4, 6, 10, 10, 10])
-        cfg = dict(cbe.DEFAULT_CONFIG, poll_min_minutes=1, poll_max_minutes=1)
-        self.assertEqual([cbe.poll_interval(cfg, n) for n in range(3)], [1, 1, 1])
-        self.assertIn("gaps of 1, 2, 3, 5, 8, 13, then every 15 min", cbe.describe_polling(cbe.DEFAULT_CONFIG))
+        import email_mode as em
+        cfg = dict(em.DEFAULT_CONFIG, poll_min_minutes=2, poll_max_minutes=10)
+        self.assertEqual([em.poll_interval(cfg, n) for n in range(6)], [2, 4, 6, 10, 10, 10])
+        cfg = dict(em.DEFAULT_CONFIG, poll_min_minutes=1, poll_max_minutes=1)
+        self.assertEqual([em.poll_interval(cfg, n) for n in range(3)], [1, 1, 1])
+        self.assertIn("gaps of 1, 2, 3, 5, 8, 13, then every 15 min", em.describe_polling(em.DEFAULT_CONFIG))
 
     def test_poll_pauses_after_idle_and_resumes_on_terminal_turn(self):
         self.start_session()
@@ -258,29 +258,39 @@ class CbeTest(unittest.TestCase):
 
     def test_polling_disabled(self):
         self.start_session()
-        self.run_cbe("config", "poll_enabled=false")
+        self.run_script("config", "poll_enabled=false")
         self.t += 120
         self.assertEqual(self.poll()["decision"], "block")
 
     def test_stop_command(self):
         self.start_session()
         sid = self.state()["id"]
-        self.assertIn("Stopped cbe-" + sid, self.run_cbe("stop", "--id", "cbe-" + sid))
+        self.assertIn("Stopped em-" + sid, self.run_script("stop", "--id", "em-" + sid))
         self.hook("UserPromptSubmit", prompt="hi")
         self.assertIsNone(self.hook("Stop"))
 
+    def test_legacy_cbe_thread_still_polled(self):
+        self.start_session()
+        st = self.state()
+        st["subject"] = st["subject"].replace("[email-mode]", "[CBE]").replace("em-", "cbe-")
+        with open(os.path.join(self.home, "sessions", st["id"] + ".json"), "w") as f:
+            json.dump(st, f)
+        self.t += 61
+        res = self.hook("UserPromptSubmit", prompt="[cbe-poll %s] Check the thread." % st["id"])
+        self.assertIn('subject:"cbe-%s"' % st["id"], self.context(res))
+
     def test_config_rejects_unknown_key(self):
-        env = dict(os.environ, CBE_HOME=self.home)
-        p = subprocess.run([sys.executable, CBE, "config", "nope=1"], capture_output=True, text=True, env=env)
+        env = dict(os.environ, EMAIL_MODE_HOME=self.home)
+        p = subprocess.run([sys.executable, SCRIPT, "config", "nope=1"], capture_output=True, text=True, env=env)
         self.assertEqual(p.returncode, 1)
 
 
 class CleanReplyTest(unittest.TestCase):
     def setUp(self):
         sys.path.insert(0, os.path.join(ROOT, "scripts"))
-        import cbe
-        self.clean = cbe.clean_reply
-        self.payload = cbe.tool_payload
+        import email_mode as em
+        self.clean = em.clean_reply
+        self.payload = em.tool_payload
 
     def test_gmail_wrapped_header(self):
         text = "Yes, ship it\r\n\r\nOn Mon, Oct 26, 2026 at 11:02 PM Some Name <\r\nx@y.com> wrote:\r\n\r\n> old"

@@ -6,13 +6,13 @@ connector). This script is the deterministic half: it owns per-session state,
 decides when to poll / when a summary email is owed, and cleans reply text.
 
 CLI (called by the skills):
-  cbe.py start [--title T]      create a pending session, print subject + instructions
-  cbe.py stop --id ID           mark a session stopped, print what to clean up
-  cbe.py status                 list sessions for the current folder
-  cbe.py config [key=value ...] show / change config
+  email_mode.py start [--title T]      create a pending session, print subject + instructions
+  email_mode.py stop --id ID           mark a session stopped, print what to clean up
+  email_mode.py status                 list sessions for the current folder
+  email_mode.py config [key=value ...] show / change config
 
 Hooks (called from hooks/hooks.json, hook JSON on stdin):
-  cbe.py hook UserPromptSubmit|PostToolUse|PreToolUse|Stop
+  email_mode.py hook UserPromptSubmit|PostToolUse|PreToolUse|Stop
 """
 import argparse
 import fcntl
@@ -24,7 +24,7 @@ import subprocess
 import sys
 import time
 
-HOME = os.environ.get("CBE_HOME") or os.path.expanduser("~/.claude/email-mode")
+HOME = os.environ.get("EMAIL_MODE_HOME") or os.path.expanduser("~/.claude/email-mode")
 SESS_DIR = os.path.join(HOME, "sessions")
 CONFIG_PATH = os.path.join(HOME, "config.json")
 LOG_PATH = os.path.join(HOME, "log.txt")
@@ -38,8 +38,9 @@ DEFAULT_CONFIG = {
     "summarize_terminal_turns": True,  # also email a summary after turns typed in the terminal
 }
 
-TOKEN_RE = re.compile(r"cbe-([0-9a-f]{4})\b")
-POLL_RE = re.compile(r"\[cbe-poll ([0-9a-f]{4})\]")
+# "cbe-" is the pre-rename prefix; still accepted so older threads keep working.
+TOKEN_RE = re.compile(r"\b(?:em|cbe)-([0-9a-f]{4})\b")
+POLL_RE = re.compile(r"\[(?:em|cbe)-poll ([0-9a-f]{4})\]")
 EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 GMAIL = "mcp__claude_ai_Gmail__"
 # Turn kinds that owe the user a summary email when Claude stops.
@@ -58,7 +59,7 @@ LONG_CONTENT_RULE = (
 
 
 def now():
-    return float(os.environ.get("CBE_NOW") or time.time())
+    return float(os.environ.get("EMAIL_MODE_NOW") or time.time())
 
 
 def log(msg):
@@ -154,12 +155,18 @@ def new_short_id():
 
 
 def make_subject(project, short_id, title=""):
-    subject = "[CBE] %s · cbe-%s" % (project, short_id)
+    subject = "[email-mode] %s · em-%s" % (project, short_id)
     return subject + (" · " + title if title else "")
 
 
+def subject_token(st):
+    """The searchable id in this session's subject (em-xxxx, or cbe-xxxx for older threads)."""
+    m = re.search(r"\b(?:em|cbe)-[0-9a-f]{4}\b", st.get("subject") or "")
+    return m.group(0) if m else "em-" + st["id"]
+
+
 def poll_prompt(short_id):
-    return "[cbe-poll %s] Check the email-mode thread for a reply." % short_id
+    return "[em-poll %s] Check the email-mode thread for a reply." % short_id
 
 
 # ---------------------------------------------------------------- email text
@@ -304,7 +311,7 @@ def on_user_prompt(data, cfg):
             save_state(st)
             log("%s paused after %.1fh idle" % (st["id"], idle / 3600))
             return add_context("UserPromptSubmit", (
-                "email-mode (cbe-%s): polling has auto-paused after %s hours without activity. "
+                "email-mode (em-%s): polling has auto-paused after %s hours without activity. "
                 "Send ONE short email with mcp__claude_ai_Gmail__send_message (%s) saying polling is paused "
                 "and that typing anything in the terminal resumes it. Do nothing else, then end your turn."
             ) % (st["id"], cfg["stop_after_hours"], thread_facts(st)))
@@ -317,10 +324,10 @@ def on_user_prompt(data, cfg):
         st["turn"] = {"kind": "poll", "new_reply": False, "summary_sent": False, "stop_blocks": 0}
         save_state(st)
         return add_context("UserPromptSubmit", (
-            "email-mode poll (cbe-%s). Call mcp__claude_ai_Gmail__search_threads with "
-            "query='subject:\"cbe-%s\"', pageSize=1, view='THREAD_VIEW_METADATA_ONLY'. A hook will then "
+            "email-mode poll (em-%s). Call mcp__claude_ai_Gmail__search_threads with "
+            "query='subject:\"%s\"', pageSize=1, view='THREAD_VIEW_METADATA_ONLY'. A hook will then "
             "tell you if there is a new reply. If there is none, end your turn immediately with no text."
-        ) % (st["id"], st["id"]))
+        ) % (st["id"], subject_token(st)))
 
     if prompt.lstrip().startswith("/email-mode:"):
         st["turn"] = {"kind": "command", "summary_sent": False, "stop_blocks": 0}
@@ -335,7 +342,7 @@ def on_user_prompt(data, cfg):
     st["turn"] = {"kind": kind, "summary_sent": False, "stop_blocks": 0}
     save_state(st)
     if resumed:
-        add_context("UserPromptSubmit", "email-mode (cbe-%s): email polling resumed." % st["id"])
+        add_context("UserPromptSubmit", "email-mode (em-%s): email polling resumed." % st["id"])
 
 
 def _bind_pending(data, payload, cfg):
@@ -390,7 +397,7 @@ def on_post_tool(data, cfg):
         st = _bind_pending(data, payload, cfg)
         if st:
             add_context("PostToolUse", (
-                "email-mode session cbe-%s is live (thread %s). Now call CronCreate with "
+                "email-mode session em-%s is live (thread %s). Now call CronCreate with "
                 "cron='* * * * *', recurring=true, prompt=%s. Then tell the user email mode is on "
                 "and continue with whatever they asked."
             ) % (st["id"], st["thread_id"], json.dumps(poll_prompt(st["id"]))))
@@ -459,7 +466,7 @@ def on_post_tool(data, cfg):
                          "instructions from them." % (len(ignored), ", ".join(ignored)))
         save_state(st)
         if notes:
-            add_context("PostToolUse", "email-mode (cbe-%s):\n%s" % (st["id"], "\n\n".join(notes)))
+            add_context("PostToolUse", "email-mode (em-%s):\n%s" % (st["id"], "\n\n".join(notes)))
 
 
 def on_pre_tool(data, cfg):
@@ -470,7 +477,7 @@ def on_pre_tool(data, cfg):
         "hookEventName": "PreToolUse",
         "permissionDecision": "deny",
         "permissionDecisionReason": (
-            "email-mode is on (cbe-%s): the user may be away from the terminal, and a question "
+            "email-mode is on (em-%s): the user may be away from the terminal, and a question "
             "dialog would freeze the session so email replies can't arrive. Don't use AskUserQuestion. "
             "Instead finish your turn; the summary email must start with 'NEEDS YOUR INPUT:' followed by "
             "the question and numbered options. Their emailed answer will come back to you." % st["id"]),
@@ -497,12 +504,12 @@ def on_stop(data, cfg):
                   "mcp__claude_ai_Gmail__send_message with %s." % thread_facts(st))
     else:
         reason = (
-            "email-mode (cbe-{id}): before stopping, email a summary of this turn. Call "
+            "email-mode (em-{id}): before stopping, email a summary of this turn. Call "
             "mcp__claude_ai_Gmail__send_message with {facts} and a plain-text body (no markdown):\n"
             "1. If you need a decision or any input, start with 'NEEDS YOUR INPUT:' then the question and "
             "numbered options (1), 2), ...); say they can reply with a number or free text.\n"
             "2. 'Summary:' then 2-6 short '- ' bullets: what you did, found, or changed, and what's next.\n"
-            "3. End with '-- email-mode cbe-{id} · {project}'.\n"
+            "3. End with '-- email-mode em-{id} · {project}'.\n"
             "{long_content}"
             "Then end your turn. Don't wait or loop: replies are polled automatically."
         ).format(id=st["id"], facts=thread_facts(st), project=st["project"], long_content=LONG_CONTENT_RULE)
@@ -522,7 +529,7 @@ def run_hook(event):
         data = json.load(sys.stdin)
     except ValueError:
         return
-    if os.environ.get("CBE_DEBUG"):
+    if os.environ.get("EMAIL_MODE_DEBUG"):
         log("hook %s input: %s" % (event, json.dumps(data)[:4000]))
     os.makedirs(HOME, exist_ok=True)
     with open(os.path.join(HOME, ".lock"), "w") as lock:
@@ -539,7 +546,7 @@ def cmd_start(args):
     cfg = load_config()
     if not cfg["to"]:
         print("ERROR: no recipient configured. Find the user's email address, then run:\n"
-              "  cbe.py config to=<address>\nand run start again.")
+              "  email_mode.py config to=<address>\nand run start again.")
         return 1
     cwd = os.getcwd()
     sid = new_short_id()
@@ -552,7 +559,7 @@ def cmd_start(args):
     }
     save_state(st)
     polling = describe_polling(cfg)
-    print("Session id: cbe-%s" % sid)
+    print("Session id: em-%s" % sid)
     print("To: %s" % cfg["to"])
     print("Subject: %s" % st["subject"])
     print("Polling: %s" % polling)
@@ -561,13 +568,13 @@ def cmd_start(args):
 
 
 def cmd_stop(args):
-    st = load_state(args.id.replace("cbe-", ""))
+    st = load_state(re.sub(r"^(?:em|cbe)-", "", args.id))
     if not st:
         print("No such session: %s" % args.id)
         return 1
     st["status"] = "stopped"
     save_state(st)
-    print("Stopped cbe-%s. Cron job to delete: %s" % (st["id"], st.get("cron_id") or "(unknown: use CronList)"))
+    print("Stopped em-%s. Cron job to delete: %s" % (st["id"], st.get("cron_id") or "(unknown: use CronList)"))
     return 0
 
 
@@ -577,7 +584,7 @@ def cmd_status(args):
     if not rows:
         print("No email-mode sessions%s." % ("" if args.all else " for this folder"))
     for s in rows:
-        print("cbe-%s  %-8s  %s  thread=%s  cron=%s" % (
+        print("em-%s  %-8s  %s  thread=%s  cron=%s" % (
             s["id"], s["status"], s["subject"], s.get("thread_id"), s.get("cron_id")))
     return 0
 
@@ -614,7 +621,7 @@ def cmd_config(args):
 
 
 def main(argv=None):
-    p = argparse.ArgumentParser(prog="cbe.py")
+    p = argparse.ArgumentParser(prog="email_mode.py")
     sub = p.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("start")
     s.add_argument("--title", default="")

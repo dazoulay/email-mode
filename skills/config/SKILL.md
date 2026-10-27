@@ -1,14 +1,14 @@
 ---
 description: Show or change email-mode settings (recipient address, polling on/off and intervals, whether terminal turns are summarized by email).
 argument-hint: "[key=value ...]"
-allowed-tools: Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cbe.py:*)
+allowed-tools: Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/email_mode.py:*)
 ---
 
 # email-mode config
 
 Requested change: `$ARGUMENTS`
 
-Run `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/cbe.py" config [key=value ...]` (no pairs = show current settings).
+Run `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/email_mode.py" config [key=value ...]` (no pairs = show current settings).
 Translate plain-English requests into keys:
 
 | key | default | meaning |

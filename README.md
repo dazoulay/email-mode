@@ -29,7 +29,7 @@ emails you a short summary there. If it needs a decision, it asks in the email. 
 and your reply goes back to Claude as if you'd typed it in the terminal.**
 
 ```text
-Subject: [CBE] my-app · cbe-c949 · fix login flow
+Subject: [email-mode] my-app · em-c949 · fix login flow
 
 NEEDS YOUR INPUT: The session cookie can be fixed two ways:
 1) Shorten the expiry to 1h and add a refresh endpoint
@@ -41,7 +41,7 @@ Summary:
 - Added a failing test that reproduces it (auth.test.ts)
 - Next: implement whichever option you pick
 
--- email-mode cbe-c949 · my-app
+-- email-mode em-c949 · my-app
 ```
 
 > You reply **`1`** from your phone. Within a minute Claude picks it up, implements option 1, and
@@ -216,7 +216,7 @@ model turn (cached context, one metadata call), so backing off keeps the cost lo
 <details>
 <summary><strong>Can I run several sessions at once?</strong></summary>
 
-Yes. Each session gets its own `cbe-xxxx` id and its own thread.
+Yes. Each session gets its own `em-xxxx` id and its own thread.
 </details>
 
 <details>
@@ -225,8 +225,8 @@ Yes. Each session gets its own `cbe-xxxx` id and its own thread.
 - Check that the session is still open and idle; polls only run between turns.
 - Reply on the same thread. Changing the subject or forwarding can start a new thread that isn't watched.
 - If the 7-day poll job expired, run `/email-mode:start` again.
-- Start Claude with `CBE_DEBUG=1` to log hook activity to `~/.claude/email-mode/log.txt`, and run
-  `python3 scripts/cbe.py status --all` to see session state.
+- Start Claude with `EMAIL_MODE_DEBUG=1` to log hook activity to `~/.claude/email-mode/log.txt`, and run
+  `python3 scripts/email_mode.py status --all` to see session state.
 </details>
 
 <details>
@@ -239,22 +239,22 @@ the `to` address.
 ## Contributing
 
 Issues and PRs are welcome. Reply-header formats from more mail clients and languages are especially
-useful: add them to `_QUOTE_HEADERS` in `scripts/cbe.py` with a test.
+useful: add them to `_QUOTE_HEADERS` in `scripts/email_mode.py` with a test.
 
 ```sh
 git clone https://github.com/dazoulay/email-mode && cd email-mode
-python3 -m unittest discover -s tests       # unit tests, no network
+python3 -m unittest discover -s tests             # unit tests, no network
 claude plugin validate .
-claude --plugin-dir .                       # load your working copy
-CBE_HOME=/tmp/cbe claude --plugin-dir .     # use a separate state/config dir
+claude --plugin-dir .                             # load your working copy
+EMAIL_MODE_HOME=/tmp/em claude --plugin-dir .     # use a separate state/config dir
 ```
 
 ```text
-.claude-plugin/   plugin.json, marketplace.json
-hooks/hooks.json  hook wiring
-scripts/cbe.py    state, backoff, reply detection, quote stripping, hook output
-skills/           start / stop / config: the instructions Claude follows
-tests/            unit tests driven by fake hook payloads
+.claude-plugin/        plugin.json, marketplace.json
+hooks/hooks.json       hook wiring
+scripts/email_mode.py  state, backoff, reply detection, quote stripping, hook output
+skills/                start / stop / config: the instructions Claude follows
+tests/                 unit tests driven by fake hook payloads
 ```
 
 ## License

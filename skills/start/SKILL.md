@@ -1,7 +1,7 @@
 ---
 description: Start email mode for this session. Opens a dedicated Gmail thread, emails a concise summary whenever Claude finishes working, and polls the thread so the user can reply with instructions or decisions while away from the terminal.
 argument-hint: "[optional short title]"
-allowed-tools: Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cbe.py:*), mcp__claude_ai_Gmail__send_message, mcp__claude_ai_Gmail__search_threads, CronCreate
+allowed-tools: Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/email_mode.py:*), mcp__claude_ai_Gmail__send_message, mcp__claude_ai_Gmail__search_threads, CronCreate
 ---
 
 # Start email-mode
@@ -9,15 +9,15 @@ allowed-tools: Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cbe.py:*), mcp__claude
 Requested title: `$ARGUMENTS` (if empty, use a 2-5 word title for the current task, or none if there is no task yet).
 
 1. Create the session (quote the title properly):
-   `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/cbe.py" start --title "<title>"`
+   `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/email_mode.py" start --title "<title>"`
    - If it prints `ERROR: no recipient configured`, ask the user which email address to send to, run
-     `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/cbe.py" config to=<address>`, then run `start` again.
+     `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/email_mode.py" config to=<address>`, then run `start` again.
 2. Send the kickoff email with `mcp__claude_ai_Gmail__send_message`: `to` and `subject` exactly as printed
    (no `replyThreadId`). Plain-text body, no markdown:
    - one line saying Claude Code is now reachable by email for the printed project and session id,
    - the current task in one line (if any),
    - "Reply to this thread to give instructions or answer questions. Polling: <printed polling line>."
-   - last line: `-- email-mode cbe-<id>`
+   - last line: `-- email-mode em-<id>`
 3. A hook then gives you a `CronCreate` call to make. Make it exactly as given.
 4. Tell the user in at most 3 short lines: email mode is on (subject), polling schedule, and that the session
    must stay open (polling stops when Claude exits and the scheduled job expires after 7 days). If the
