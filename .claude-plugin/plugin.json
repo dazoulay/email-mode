@@ -1,6 +1,6 @@
 {
   "name": "email-mode",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Drive Claude Code by email: a Gmail thread per session gets a summary whenever Claude finishes, and your replies (instructions, decisions) are passed back to Claude.",
   "author": {
     "name": "David Azoulay",

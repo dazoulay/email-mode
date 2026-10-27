@@ -32,8 +32,9 @@ LOG_PATH = os.path.join(HOME, "log.txt")
 DEFAULT_CONFIG = {
     "to": "",                       # where emails go; only replies from this address are obeyed
     "poll_enabled": True,           # false = never check for replies
-    "poll_min_minutes": 1,          # first poll this long after activity; backoff starts here...
-    "poll_max_minutes": 15,         # ...and grows (Fibonacci: 1, 2, 3, 5, 8, 13...) up to this
+    "poll_min_minutes": 1,          # poll this often during the first window after activity...
+    "poll_window_minutes": 60,      # ...then add poll_min_minutes to the gap after each window like this
+    "poll_max_minutes": 15,         # longest gap between polls
     "stop_after_hours": 24,         # then pause polling (0 = never pause)
     "summarize_terminal_turns": True,  # also email a summary after turns typed in the terminal
 }
@@ -252,41 +253,34 @@ def thread_facts(st):
         json.dumps(st["to"]), json.dumps(st["subject"]), json.dumps(st["thread_id"]))
 
 
-def poll_interval(cfg, empty_polls):
-    """Minutes to wait after `empty_polls` polls with no reply: Fibonacci backoff, capped.
+def poll_interval(cfg, idle_seconds):
+    """Minutes between polls after `idle_seconds` without activity: a step backoff, capped.
 
-    With the defaults: 1, 2, 3, 5, 8, 13, 15, 15... (the scheduler ticks once a minute).
+    With the defaults: every 1 min for the first hour, every 2 min the next hour, every 3 the
+    next... up to every 15 min (the scheduler ticks once a minute).
     """
-    a, b = 1, 2
-    for _ in range(empty_polls):
-        a, b = b, a + b
-        if a * cfg["poll_min_minutes"] >= cfg["poll_max_minutes"]:
-            break
-    return min(a * cfg["poll_min_minutes"], cfg["poll_max_minutes"])
+    window = cfg["poll_window_minutes"] * 60
+    steps = int(idle_seconds // window) + 1 if window > 0 else 1
+    return min(cfg["poll_min_minutes"] * steps, cfg["poll_max_minutes"])
 
 
 def mark_activity(st, cfg, t):
     """Something happened (user typed, user replied, Claude emailed): reset polling to the fastest rate."""
     st["last_activity"] = t
-    st["empty_polls"] = 0
     st["next_poll_at"] = t + poll_interval(cfg, 0) * 60
 
 
 def describe_polling(cfg):
     if not cfg["poll_enabled"]:
         return "off (config poll_enabled=false)"
-    steps, n = [], 0
-    while len(steps) < 8:
-        m = poll_interval(cfg, n)
-        steps.append(m)
-        if m >= cfg["poll_max_minutes"]:
-            break
-        n += 1
-    if len(steps) == 1:
-        text = "every %s min" % steps[0]
+    first, cap = poll_interval(cfg, 0), cfg["poll_max_minutes"]
+    if first >= cap or cfg["poll_window_minutes"] <= 0:
+        text = "every %s min" % first
     else:
-        text = "gaps of %s, then every %s min (backoff resets to %s min on any activity)" % (
-            ", ".join(str(m) for m in steps[:-1]), steps[-1], steps[0])
+        text = ("every %s min for the first %s min after activity, then every %s min for the next %s, "
+                "and so on, up to every %s min (resets on any activity)") % (
+            first, cfg["poll_window_minutes"], poll_interval(cfg, cfg["poll_window_minutes"] * 60),
+            cfg["poll_window_minutes"], cap)
     if cfg["stop_after_hours"]:
         text += "; pauses after %sh idle" % cfg["stop_after_hours"]
     return text
@@ -318,9 +312,8 @@ def on_user_prompt(data, cfg):
         # 20s of slack absorbs scheduler jitter between cron firings
         if t < st.get("next_poll_at", 0) - 20:
             return skip_poll("next poll not due yet")
-        st["empty_polls"] = st.get("empty_polls", 0) + 1
         st["last_poll"] = t
-        st["next_poll_at"] = t + poll_interval(cfg, st["empty_polls"]) * 60
+        st["next_poll_at"] = t + poll_interval(cfg, idle) * 60
         st["turn"] = {"kind": "poll", "new_reply": False, "summary_sent": False, "stop_blocks": 0}
         save_state(st)
         return add_context("UserPromptSubmit", (

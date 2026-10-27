@@ -56,8 +56,9 @@ Summary:
   the same link.
 - ❓ **Decisions by email.** Questions arrive as numbered options, so you can answer with one digit.
 - ↩️ **Clean replies.** Quoted history and signatures are removed before Claude sees your reply.
-- ⏱️ **Polling that backs off.** Polls 1 minute after activity, then waits longer each time, up to 15
-  minutes. Polls that aren't due never reach the model, so they cost nothing.
+- ⏱️ **Polling that slows down when you're away.** Every minute for the first hour after activity,
+  every 2 minutes the next hour, and so on, up to every 15 minutes. Polls that aren't due never reach
+  the model, so they cost nothing.
 - 🔒 **Only you can steer it.** Mail from any other sender on the thread is ignored.
 - 🔑 **No API keys.** It uses the claude.ai Gmail connector you already have.
 
@@ -121,14 +122,20 @@ sessions.
 |---|---|---|
 | `to` | *asked on first start* | Where emails go. The only sender whose replies are obeyed |
 | `poll_enabled` | `true` | `false` stops checking for replies (summaries are still sent) |
-| `poll_min_minutes` | `1` | First poll after any activity, where the backoff starts |
-| `poll_max_minutes` | `15` | Longest gap between polls. Set it equal to `poll_min_minutes` to turn backoff off |
+| `poll_min_minutes` | `1` | Gap between polls in the first window after activity, and how much the gap grows each window |
+| `poll_window_minutes` | `60` | How long each window lasts |
+| `poll_max_minutes` | `15` | Longest gap between polls. Set it equal to `poll_min_minutes` to poll at a fixed rate |
 | `stop_after_hours` | `24` | Pause polling after this much idle time (`0` = never). Typing in the terminal resumes it |
 | `summarize_terminal_turns` | `true` | `false` only emails after work started by an email reply |
 
-**Polling schedule.** Gaps follow the Fibonacci sequence: 1 → 2 → 3 → 5 → 8 → 13 → 15 → 15 … minutes.
-Any activity resets the gap to 1 minute: your email reply, a message typed in the terminal, or Claude
-sending a summary. That works out to about 7 polls in the first hour of silence, then 4 an hour.
+**Polling schedule.** With the defaults:
+
+| Time since last activity | 0–1 h | 1–2 h | 2–3 h | … | 14 h + |
+|---|---|---|---|---|---|
+| Polls every | 1 min | 2 min | 3 min | … | 15 min |
+
+Any activity starts it over at every minute: your email reply, a message typed in the terminal, or
+Claude sending a summary. Polling pauses after 24 hours with no activity.
 
 Emails are sent **from** the Gmail account the connector is signed in to, **to** the `to` address. The
 two can be the same account.
@@ -154,7 +161,7 @@ sequenceDiagram
     Hooks-->>Claude: "email a summary first"
     Claude->>Gmail: summary + NEEDS YOUR INPUT
     Gmail-->>You: 📬
-    loop backoff: 1, 2, 3, 5, 8, 13, 15 min
+    loop every 1 min (1st hour), 2 min (2nd hour), ... up to 15 min
         Hooks-->>Claude: poll is due
         Claude->>Gmail: any new messages?
     end
@@ -210,7 +217,9 @@ Yes. The poll job lives in memory, ends when Claude Code exits, and expires afte
 <summary><strong>Why not poll every 10 seconds?</strong></summary>
 
 Claude Code's scheduler can't fire more often than once a minute. Each poll that's due is also a small
-model turn (cached context, one metadata call), so backing off keeps the cost low.
+model turn (cached context, one metadata call). That's 60 in the first hour after activity, 30 in the
+second, 20 in the third, and so on. If that's more than you want, raise `poll_min_minutes` or shorten
+`poll_window_minutes`.
 </details>
 
 <details>

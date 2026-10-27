@@ -211,23 +211,31 @@ class EmailModeTest(unittest.TestCase):
                 ran.append(m)
         return ran
 
-    def test_poll_backoff_is_fibonacci_and_capped(self):
+    def test_poll_backoff_steps_up_each_window(self):
         self.start_session()
-        # gaps: 1, 2, 3, 5, 8, 13, then 15 (cap)
-        self.assertEqual(self.polls_due_over(62), [1, 3, 6, 11, 19, 32, 47, 62])
+        ran = self.polls_due_over(180)
+        self.assertEqual(ran[:60], list(range(1, 61)))                 # hour 1: every minute
+        self.assertEqual([m for m in ran if 60 < m <= 120], list(range(62, 121, 2)))  # hour 2: every 2
+        self.assertEqual([m for m in ran if m > 120], list(range(123, 181, 3)))       # hour 3: every 3
+
+    def test_poll_backoff_capped(self):
+        self.start_session()
+        self.run_script("config", "poll_window_minutes=2")  # reach the cap within the hour
+        ran = self.polls_due_over(75)
+        self.assertEqual(ran[-1] - ran[-2], 15)
 
     def test_activity_resets_backoff(self):
         self.start_session()
-        self.polls_due_over(20)  # backed off to 8-13 min gaps by now
+        self.polls_due_over(150)  # into the every-3-min window
         self.hook("UserPromptSubmit", prompt="back at my desk")
-        self.assertEqual(self.polls_due_over(6), [1, 3, 6])
+        self.assertEqual(self.polls_due_over(3), [1, 2, 3])
 
     def test_summary_email_resets_backoff(self):
         self.start_session()
-        self.polls_due_over(20)
+        self.polls_due_over(150)
         self.hook("PostToolUse", tool_name="mcp__claude_ai_Gmail__send_message",
                   tool_input={"replyThreadId": THREAD}, tool_response=self.mcp({"id": "m5", "threadId": THREAD}))
-        self.assertEqual(self.polls_due_over(3), [1, 3])
+        self.assertEqual(self.polls_due_over(3), [1, 2, 3])
 
     def test_poll_tolerates_cron_jitter(self):
         self.start_session()
@@ -237,11 +245,13 @@ class EmailModeTest(unittest.TestCase):
     def test_backoff_config(self):
         sys.path.insert(0, os.path.join(ROOT, "scripts"))
         import email_mode as em
-        cfg = dict(em.DEFAULT_CONFIG, poll_min_minutes=2, poll_max_minutes=10)
-        self.assertEqual([em.poll_interval(cfg, n) for n in range(6)], [2, 4, 6, 10, 10, 10])
+        cfg = dict(em.DEFAULT_CONFIG, poll_min_minutes=2, poll_window_minutes=30, poll_max_minutes=5)
+        self.assertEqual([em.poll_interval(cfg, m * 60) for m in (0, 29, 30, 59, 60, 600)], [2, 2, 4, 4, 5, 5])
         cfg = dict(em.DEFAULT_CONFIG, poll_min_minutes=1, poll_max_minutes=1)
-        self.assertEqual([em.poll_interval(cfg, n) for n in range(3)], [1, 1, 1])
-        self.assertIn("gaps of 1, 2, 3, 5, 8, 13, then every 15 min", em.describe_polling(em.DEFAULT_CONFIG))
+        self.assertEqual(em.poll_interval(cfg, 5 * 3600), 1)
+        self.assertEqual(em.describe_polling(cfg).split(";")[0], "every 1 min")
+        self.assertIn("every 1 min for the first 60 min after activity, then every 2 min for the next 60",
+                      em.describe_polling(em.DEFAULT_CONFIG))
 
     def test_poll_pauses_after_idle_and_resumes_on_terminal_turn(self):
         self.start_session()

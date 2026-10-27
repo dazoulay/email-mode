@@ -10,7 +10,7 @@
       "name": "email-mode",
       "source": "./",
       "description": "Drive Claude Code by email via the claude.ai Gmail connector.",
-      "version": "0.2.0"
+      "version": "0.3.0"
     }
   ]
 }
