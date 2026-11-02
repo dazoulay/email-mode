@@ -18,7 +18,8 @@
   <a href="#commands">Commands</a> •
   <a href="#configuration">Configuration</a> •
   <a href="#how-it-works">How it works</a> •
-  <a href="#security--privacy">Security</a> •
+  <a href="#security">Security</a> •
+  <a href="#privacy">Privacy</a> •
   <a href="#faq">FAQ</a>
 </p>
 
@@ -183,7 +184,7 @@ Polls come from a session-scoped `CronCreate` job that fires every minute; the h
 those firings actually run. State is stored in `~/.claude/email-mode/sessions/`. The hooks load in every
 session but do nothing until you run `/email-mode:start`.
 
-## Security & privacy
+## Security
 
 > [!IMPORTANT]
 > **Email replies are instructions.** Anyone who can send mail as your `to` address can direct Claude.
@@ -193,8 +194,20 @@ session but do nothing until you run `/email-mode:start`.
   sees a note that they were ignored.
 - Summaries describe your work (file names, findings, short snippets) and pass through Gmail. Don't use
   email mode on code you can't send to your mailbox.
-- Nothing leaves your machine except through the Gmail connector. There's no telemetry and no
-  third-party service.
+
+## Privacy
+
+email-mode has no servers, no telemetry and no analytics. The author receives none of your data.
+
+- **Stored on your machine:** your `to` address and settings in `~/.claude/email-mode/config.json`.
+  Each session's thread id, message ids and timestamps go in `~/.claude/email-mode/sessions/`. With
+  `EMAIL_MODE_DEBUG=1`, hook activity is also logged to `~/.claude/email-mode/log.txt`. Delete the
+  folder to remove all of it.
+- **Read:** replies on the session's own thread, through your claude.ai Gmail connector.
+- **Sent:** kickoff, summary and closing emails, sent to your `to` address through the same connector.
+  Long documents go to a private claude.ai page in your own account.
+- Gmail and claude.ai handle that data under their own terms. email-mode keeps nothing elsewhere and
+  shares nothing with third parties.
 
 ## FAQ
 

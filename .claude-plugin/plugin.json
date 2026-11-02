@@ -15,5 +15,6 @@
   ],
   "license": "MIT",
   "homepage": "https://github.com/dazoulay/email-mode",
-  "repository": "https://github.com/dazoulay/email-mode"
+  "repository": "https://github.com/dazoulay/email-mode",
+  "privacyPolicyUrl": "https://github.com/dazoulay/email-mode#privacy"
 }
