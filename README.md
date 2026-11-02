@@ -251,7 +251,8 @@ Issues and PRs are welcome. Reply-header formats from more mail clients and lang
 useful: add them to `_QUOTE_HEADERS` in `scripts/email_mode.py` with a test.
 
 ```sh
-git clone https://github.com/dazoulay/email-mode && cd email-mode
+git clone https://github.com/dazoulay/email-mode
+cd email-mode
 python3 -m unittest discover -s tests             # unit tests, no network
 claude plugin validate .
 claude --plugin-dir .                             # load your working copy
